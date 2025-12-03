@@ -1,5 +1,3 @@
-# app/services/raw_report_service.py
-
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import os
@@ -38,7 +36,7 @@ if DartClient and DartFinancialLoader and MetricsCalculator:
             dart_client = DartClient(api_key=dart_key)
             DART_LOADER = DartFinancialLoader(dart_client)
             METRICS_CALCULATOR = MetricsCalculator()
-            print("[raw_report_service] ✅ DART 모듈 초기화 완료")
+            print("[raw_report_service] ✅  DART 모듈 초기화 완료")
         except Exception as e:
             print("[raw_report_service] ⚠️ DART 초기화 실패:", e)
     else:
@@ -56,7 +54,6 @@ NAME_TO_CODE: Dict[str, str] = {
 # -------------------------------------------------------------------
 # 2) 공통 유틸: 티커 정규화 / 포맷터
 # -------------------------------------------------------------------
-
 def _normalize_ticker(ticker: str) -> str:
     """
     - '삼성전자' 같이 이름으로 들어와도
@@ -82,7 +79,7 @@ def _normalize_ticker(ticker: str) -> str:
             stocks = fdr.StockListing("KRX")
             row = stocks[stocks["Name"] == t]
             if not row.empty:
-                return row.iloc[0]["Code"]
+                return str(row.iloc[0]["Code"])
         except Exception as e:
             print("[_normalize_ticker] KRX 조회 실패:", e)
 
@@ -105,7 +102,6 @@ def _fmt_won(v: Optional[float]) -> str:
 # -------------------------------------------------------------------
 # 3) 실시간 스냅샷: 가격/수익률/기본 정보 (FDR)
 # -------------------------------------------------------------------
-
 def load_stock_snapshot(ticker: str) -> Optional[Dict[str, Any]]:
     code = _normalize_ticker(ticker)
 
@@ -209,7 +205,6 @@ def load_stock_snapshot(ticker: str) -> Optional[Dict[str, Any]]:
 # -------------------------------------------------------------------
 # 4) 1차 밸류에이션 지표: FDR StockSummary (있으면 사용)
 # -------------------------------------------------------------------
-
 def load_stock_metrics(ticker: str) -> Dict[str, Any]:
     """
     1차: FDR StockSummary
@@ -245,7 +240,6 @@ def load_stock_metrics(ticker: str) -> Dict[str, Any]:
 # -------------------------------------------------------------------
 # 5) FDR metrics 부족 시 DART로 보강
 # -------------------------------------------------------------------
-
 def _enhance_metrics_with_dart_if_needed(
     ticker: str,
     metrics: Dict[str, Any],
@@ -279,7 +273,7 @@ def _enhance_metrics_with_dart_if_needed(
         print("[DART] 재무제표 DataFrame 비어 있음")
         return metrics, None
 
-    # 2) 재무제표 기반 지표 계산 (여기서 MetricsCalculator가 패턴 매칭 수행)
+    # 2) 재무제표 기반 지표 계산
     calculated = METRICS_CALCULATOR.calculate_from_dataframe(
         financial_df,
         current_price=current_price,
@@ -305,15 +299,25 @@ def _enhance_metrics_with_dart_if_needed(
 # -------------------------------------------------------------------
 # 6) 최종 리포트 조립
 # -------------------------------------------------------------------
-
 def generate_raw_report(ticker: str) -> Dict[str, Any]:
     """
     최종: 내부 리포트 JSON 생성
     - 스냅샷(FDR)
     - 밸류에이션(FDR → DART 보강)
     """
+    # 타입 가드: 혹시 dict 같은 게 넘어오면 바로 no-data 처리
+    if not isinstance(ticker, str):
+        print(f"[generate_raw_report] invalid ticker type: {type(ticker)} {repr(ticker)[:200]}")
+        return {}
+
+    ticker = ticker.strip()
+    if not ticker:
+        print("[generate_raw_report] empty ticker")
+        return {}
+
     snapshot = load_stock_snapshot(ticker)
     if not snapshot:
+        print(f"[generate_raw_report] snapshot not found for ticker={ticker!r}")
         return {}
 
     # 1차: FDR
@@ -435,3 +439,4 @@ def generate_raw_report(ticker: str) -> Dict[str, Any]:
     }
 
     return report_data
+
